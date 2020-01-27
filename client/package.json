@@ -1,0 +1,16 @@
+{
+    "name": "client",
+    "version": "1.0.0",
+    "description": "ftp client CLI",
+    "main": "client.js",
+    "repository": "https://github.com/nagamocha3000/ftp-nodejs",
+    "author": "naga",
+    "license": "MIT",
+    "private": true,
+    "scripts": {
+        "start": "node client.js"
+    },
+    "dependencies": {
+        "chalk-pipe": "^3.0.0"
+    }
+}
