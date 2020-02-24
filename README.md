@@ -1,6 +1,6 @@
 ### 1. Introduction
 
-The following is an overview of, to use a lofty term, the 'architecture' of a File Transfer Protocol (FTP) client and server implementation I wrote in javascript (node.js). It covers the overall design, various considerations, decisions and protocols, messaging protocols and caveats, particularly in ways that deviate from standardized FTP. The code is entirely open-source. I took up working on this FTP program so as to challenge myself to code a non-trivial, non-web-dev intermediate level node.js project. As such, the code is mostly learning-oriented rather than production-oriented. Regrettably, I did not write much tests, instead relying on 'hand-testing' as I went along. I hope though to add tests soon enough.
+The following covers, to use a lofty term, the 'architecture' of a File Transfer Protocol (FTP) client and server implementation I wrote in javascript (node.js). It goes into the overall design, various considerations, decisions and protocols, messaging protocols and caveats, particularly in ways that deviate from standardized FTP. The code is entirely open-source. I took up working on this FTP program so as to challenge myself to code a non-trivial, non-web-dev intermediate level node.js project. As such, the code is mostly learning-oriented rather than production-oriented. Regrettably, I did not write much tests, instead relying on 'hand-testing' as I went along. I hope though to add tests soon enough.
 
 ### 2. Code structure
 
@@ -16,19 +16,19 @@ Having never written a node.js based CLI before, I assumed that I'd have to do a
 
 > React for CLIs. Build and test your CLI output using components.
 
-Luckily, I already knew enough React to be dangerous. Furthermore, given that a client-session would have to maintain some sort of state (e.g. the client's current working directory), I was tempted to go all in and base the CLI on `ink` since IMO, React provides great abstractions to reason about state. (Spoiler alert, I ended up 'splitting' the state so that all state that's relevant for client-side commands is maintained in the client and all the state that's relevant for server-side commands is maintained in ther server). Back to ink, despite `ink`'s straightforwardness, a part of me felt that maybe React is a little too heavy for a simple CLI. Still, I decided to check it out and take it for a test-drive but quickly moved on to the next option after seeing that I have to set up babel and a bunch of other stuff so as to use it 😅.
+Luckily, I already knew enough React to be dangerous. Furthermore, given that a client-session would have to maintain some sort of state (e.g. the client's current working directory), I was tempted to go all in and base the CLI on `ink` since IMO, React provides great abstractions for reasoning about state. (Spoiler alert, I ended up 'splitting' the state so that all state that's relevant for client-side commands is maintained in the client and all the state that's relevant for server-side commands is maintained in ther server). Back to ink, despite `ink`'s straightforwardness, a part of me felt that maybe React is a little too heavy for a simple CLI. Still, I decided to check it out and take it for a test-drive but quickly moved on to the next option after seeing that I have to set up babel and a bunch of other stuff in order to use it 😅.
 
-The last option was `inquirer`. From afar, `inquirer` involves creating an array of questions for which the user provides answers via the terminal, and have the answers processed. It also provides additional features such as preprocessing answers and validations. Questions have 'types' amongst other attributes. I decided to use `inquirer`. I also add the plugin `inquirer-command-prompt` to `inquirer` which I used to incorporate _autocomplete_ and _history_ of commands that a user could navigate through via the up-down arrow keys. I was able to implement most of the client-side commands sometimes awkwardly, sometimes elegeantly. That was until ...
+The last option was `inquirer`. From afar, `inquirer` involves creating an array of questions for which the user provides answers via the terminal, and have the answers processed. It also provides additional features such as preprocessing answers and validations. Questions have 'types' amongst other attributes. I decided to use `inquirer`. I also add the plugin `inquirer-command-prompt` to `inquirer` which I used to incorporate _autocomplete_ and _history_ of commands that a user could navigate through via the up-down arrow keys. I was then able to implement most of the client-side commands sometimes awkwardly, sometimes elegeantly. That was until ...
 
 #### ctrl-c doesn't work as it should 😕
 
-I had written a `cleanup` function that was supposed to be called whenever the user intended to quit- either by issuing a `quit` command or via _ctrl-c_. But for some reason _ctrl-c_ wasn't working as expected. I read and reread `inquirer`'s the documentation to see if I had missed something. After a while, I found out that `inquirer-command-prompt` lets us add an onClose function to be ran when the user presess ctrl-c. However, given how I'd structured the code above, `cleanup` would be ran on each iteration rather than solely when a user intends to quit.
+I had written a `cleanup` function that was supposed to be called whenever the user intended to quit- either by issuing a `quit` command or via _ctrl-c_. But for some reason _ctrl-c_ wasn't working as expected. I read and reread `inquirer`'s the documentation to see if I had missed something. After a while, I found out that `inquirer-command-prompt` lets us add an `onClose` function to be ran when the user presess ctrl-c. However, given how I'd structured the code above, `cleanup` would be ran on each iteration rather than solely when a user intends to quit.
 
 Before considering a full rewrite, I decided to check the Issues section of `inquirer` figuring that probably someone somewhere also faced the same problem.
 
-And bingo! found it. You can check it out on this [link](https://github.com/SBoudrias/Inquirer.js/issues/293). Turns out the problem came from some library that inquirer uses underneath to capture the input. The culprit - `readline`, which doesn't let the SIGINT event propagate back to our process due to some mumbo-jumbo.
+And bingo! found it. You can check it out [here](https://github.com/SBoudrias/Inquirer.js/issues/293). Turns out the problem came from some library that inquirer uses underneath to capture the input. The culprit - `readline`, which doesn't let the SIGINT event propagate back to our process due to some mumbo-jumbo.
 
-With another quick glance, I found the [solution](https://github.com/SBoudrias/Inquirer.js/issues/293#issuecomment-422890996) right at the bottom, courtesy of _jbreeden-splunk_. Read through it, _jbreeden-splunk_ gives a much more straightforward explanation of what the problem is and their solution, which I modified a bit to suit the code I had thus far:
+With another quick glance, I found the [solution](https://github.com/SBoudrias/Inquirer.js/issues/293#issuecomment-422890996) right at the bottom, courtesy of _jbreeden-splunk_. Read through it; _jbreeden-splunk_ gives a much more straightforward explanation of what the problem is and their solution, which I modified a bit to suit the code I had thus far:
 
 ```javascript
 //add these 2 lines near the top of client.js
@@ -50,6 +50,26 @@ The SIGINT event-handler then worked as it should; even though it felt kinda cla
 Before proceeding further, I decided to check out what this `readline` module is all about. Turns out [`readline`](https://nodejs.org/api/readline.html) is part of node.js's standard library. For starters, turns out I could do away with the initial fix (the setInterval, clearInterval voodoo) and just attach a SIGINT listener directly on the `readline` instance instead of on `process`. Moreover, `readline`'s simplicity and minimalism meant I had more freedom to structure my code as I pleased. At that point, the client CLI code wasn't too large so I opted to switch from `inquirer` and do a full rewrite instead.
 
 ### 4. Implementing Client-side commands
+
+Typically, an FTP client provides two main sets of commands: those dealing with files on the client and those dealing with files on the server. There is an intersection of these two sets: commands dealing with transferring files to and from the server but we'll get to those later.
+
+
+
+After settling on building the CLI with `readline` as the foundation, the next step was to implement the commands. The most straightforward commands to implement at that point were the client-side commands, namely:
+
+* `!pwd`: prints the current directory on the client's machine
+
+* `!cd`: changes the working directory (again, on the client's machine)
+
+* `!ls`: list the directory's contents (client's machine)
+
+* `quit`: quits
+
+
+
+Implementing these commands involved getting really really familiar with the `fs` and `path` module in node.js. Their implementation is in the `utils/clientCmds.js` file. It's worth noting that parsing ftp commands and arguments from the user is rather easy, a simple `split(/\s+/)` does the trick. As its name states, the function `handleInput` in the main file handles the CLI input and delegates to the appropriate functions.
+
+
 
 ### 5. Setting up the Server
 
